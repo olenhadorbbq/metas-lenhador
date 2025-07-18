@@ -1,0 +1,206 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Gestão de Metas – O Lenhador BBQ</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: Arial; background: #f5f5f5; padding: 20px; }
+    h1, h2 { text-align: center; }
+    .container { max-width: 1000px; margin: auto; background: #fff; padding: 20px; border-radius: 10px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { padding: 10px; border: 1px solid #ccc; text-align: left; }
+    select, input, button { padding: 8px; margin: 5px 0; width: 100%; }
+    .btn { cursor: pointer; }
+    .editando { background: #ffffcc; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>Metas – O Lenhador BBQ</h1>
+
+  <canvas id="grafico" height="100"></canvas>
+
+  <h2>Filtros</h2>
+  <div style="display:flex; gap:10px;">
+    <select id="filtroResponsavel"><option value="">Responsável</option></select>
+    <select id="filtroStatus">
+      <option value="">Status</option>
+      <option value="Pendente">Pendente</option>
+      <option value="Em andamento">Em andamento</option>
+      <option value="Concluído">Concluído</option>
+    </select>
+    <select id="filtroPrioridade">
+      <option value="">Prioridade</option>
+      <option value="Alta">Alta</option>
+      <option value="Média">Média</option>
+      <option value="Baixa">Baixa</option>
+    </select>
+    <button onclick="fetchMetas()">Aplicar</button>
+  </div>
+
+  <h2 id="formTitulo">Nova Meta</h2>
+  <form id="metaForm">
+    <input type="hidden" id="id">
+    <input type="text" id="meta" placeholder="Nome da Meta" required />
+    <input type="text" id="responsavel" placeholder="Responsável" required />
+    <select id="prioridade">
+      <option value="Alta">Alta</option>
+      <option value="Média">Média</option>
+      <option value="Baixa">Baixa</option>
+    </select>
+    <input type="date" id="prazo" required />
+    <input type="text" id="criadoPor" placeholder="Criado por" required />
+    <button type="submit">Salvar</button>
+  </form>
+
+  <h2>Metas</h2>
+  <table id="tabela">
+    <thead>
+      <tr>
+        <th>Meta</th>
+        <th>Responsável</th>
+        <th>Prioridade</th>
+        <th>Prazo</th>
+        <th>Status</th>
+        <th>Ações</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<script>
+const scriptURL = "https://https://script.google.com/macros/s/AKfycby61bFglmpMqSunUXTPNFnLhAAppVcH57NonzOafflv86vVj1VpFhUZR1UmEWim8rkH/exec"; // Salve aqui
+const urlParams = new URLSearchParams(window.location.search);
+const user = urlParams.get("user");
+const admin = urlParams.get("admin");
+
+let dadosMetas = [];
+
+document.getElementById("metaForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const id = document.getElementById("id").value;
+  const body = {
+    acao: id ? "editar" : "criar",
+    id: id || "",
+    meta: document.getElementById("meta").value,
+    responsavel: document.getElementById("responsavel").value,
+    prioridade: document.getElementById("prioridade").value,
+    prazo: document.getElementById("prazo").value,
+    status: "Pendente",
+    criadoPor: document.getElementById("criadoPor").value
+  };
+
+  await fetch(scriptURL, {
+    method: "POST",
+    body: JSON.stringify(body),
+    headers: { "Content-Type": "application/json" }
+  });
+
+  alert("Meta salva!");
+  document.getElementById("metaForm").reset();
+  document.getElementById("formTitulo").innerText = "Nova Meta";
+  fetchMetas();
+});
+
+async function fetchMetas() {
+  const res = await fetch(`${scriptURL}?${admin ? "admin=true" : "user=" + user}`);
+  const metas = await res.json();
+
+  const statusFiltro = document.getElementById("filtroStatus").value;
+  const resFiltro = document.getElementById("filtroResponsavel").value;
+  const prioridadeFiltro = document.getElementById("filtroPrioridade").value;
+
+  dadosMetas = metas.filter(m => {
+    return (!statusFiltro || m.Status === statusFiltro)
+      && (!resFiltro || m.Responsável === resFiltro)
+      && (!prioridadeFiltro || m.Prioridade === prioridadeFiltro);
+  });
+
+  atualizarTabela();
+  atualizarGrafico();
+  popularResponsaveis(metas);
+}
+
+function popularResponsaveis(metas) {
+  const responsavelSelect = document.getElementById("filtroResponsavel");
+  const nomes = [...new Set(metas.map(m => m.Responsável))];
+  responsavelSelect.innerHTML = `<option value="">Responsável</option>`;
+  nomes.forEach(nome => {
+    responsavelSelect.innerHTML += `<option value="${nome}">${nome}</option>`;
+  });
+}
+
+function atualizarTabela() {
+  const tbody = document.querySelector("#tabela tbody");
+  tbody.innerHTML = "";
+
+  dadosMetas.forEach(m => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${m.Meta}</td>
+      <td>${m.Responsável}</td>
+      <td>${m.Prioridade}</td>
+      <td>${m.Prazo.split("T")[0]}</td>
+      <td>
+        <select onchange="atualizarStatus('${m.ID}', this.value)">
+          <option ${m.Status === "Pendente" ? "selected" : ""}>Pendente</option>
+          <option ${m.Status === "Em andamento" ? "selected" : ""}>Em andamento</option>
+          <option ${m.Status === "Concluído" ? "selected" : ""}>Concluído</option>
+        </select>
+      </td>
+      <td><button onclick='editarMeta(${JSON.stringify(m)})'>Editar</button></td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+async function atualizarStatus(id, status) {
+  await fetch(scriptURL, {
+    method: "POST",
+    body: JSON.stringify({ acao: "editar", id: id, status: status }),
+    headers: { "Content-Type": "application/json" }
+  });
+  fetchMetas();
+}
+
+function editarMeta(meta) {
+  document.getElementById("id").value = meta.ID;
+  document.getElementById("meta").value = meta.Meta;
+  document.getElementById("responsavel").value = meta.Responsável;
+  document.getElementById("prioridade").value = meta.Prioridade;
+  document.getElementById("prazo").value = meta.Prazo.split("T")[0];
+  document.getElementById("criadoPor").value = meta["Criada por"];
+  document.getElementById("formTitulo").innerText = "Editar Meta";
+}
+
+let chart;
+function atualizarGrafico() {
+  const statusCount = { "Pendente": 0, "Em andamento": 0, "Concluído": 0 };
+  dadosMetas.forEach(m => statusCount[m.Status] = (statusCount[m.Status] || 0) + 1);
+
+  const ctx = document.getElementById("grafico").getContext("2d");
+  if (chart) chart.destroy();
+  chart = new Chart(ctx, {
+    type: "doughnut",
+    data: {
+      labels: Object.keys(statusCount),
+      datasets: [{
+        data: Object.values(statusCount),
+        backgroundColor: ["#ffcc00", "#3399ff", "#66cc66"]
+      }]
+    },
+    options: {
+      plugins: {
+        legend: { position: "bottom" }
+      }
+    }
+  });
+}
+
+fetchMetas();
+</script>
+</body>
+</html>
